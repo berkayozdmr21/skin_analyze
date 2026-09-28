@@ -1,4 +1,4 @@
-# Yüz Cilt Analizi Deneyleri (OpenCV + MediaPipe)
+# skin_analyze — Yüz Cilt Analizi Deneyleri (OpenCV + MediaPipe)
 
 Tek bir fotoğraftan **klasik görüntü işleme** (derin öğrenme modeli olmadan) ile yüz cildindeki farklı durumları ölçen, birbirinden bağımsız 6 mini proje ve toplam **27 sürüm**. Her proje kendi klasöründe, numaralı alt klasörlerde (`1`, `2`, `3`, ...) ilerler; her yeni sürüm bir öncekinin **istatistiğini, skor mantığını veya görselleştirmesini bilinçli olarak değiştirir** ve neden değiştirdiğini kendi `README.md` dosyasında ölçümlerle belgeler.
 
@@ -30,6 +30,8 @@ Her sürüm klasörü aynı dosya setine sahiptir:
 Python 3.9 ile test edildi.
 
 ```bash
+git clone https://github.com/berkayozdmr21/skin_analyze.git
+cd skin_analyze
 pip install -r requirements.txt
 cd "yüz kırışıklık/4"
 python app.py
