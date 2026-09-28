@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv*/
+venv/
+desktop.ini
+Thumbs.db
+# Test screenshots / face photos are kept out of the repo for privacy
+testler/
+test*/
+*.jpg
+*.jpeg
+*.png

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Yağlılık.1 - HSV Specular Highlight Tespiti</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,Segoe UI,Roboto,sans-serif; background:#f5f5f5; padding:20px; }
+    .container { max-width:1100px; margin:0 auto; background:#fff; border-radius:8px; padding:30px; box-shadow:0 2px 10px rgba(0,0,0,.1); }
+    h1 { margin-bottom:6px; color:#333; }
+    .method { color:#888; margin-bottom:24px; font-size:14px; }
+    .upload { border:2px dashed #ddd; border-radius:8px; padding:20px; text-align:center; margin-bottom:24px; }
+    button { background:#1f7a8c; color:#fff; border:none; padding:10px 24px; border-radius:4px; cursor:pointer; font-size:16px; margin-top:10px; }
+    button:disabled { background:#ccc; cursor:not-allowed; }
+    .score { font-size:48px; font-weight:bold; color:#1f7a8c; text-align:center; margin:20px 0 4px; }
+    .score-label { text-align:center; color:#666; margin-bottom:12px; }
+    .detection-count { text-align:center; font-size:22px; font-weight:bold; color:#333; background:#eaf6f8; border:1px solid #bfe3e9; border-radius:8px; padding:10px 16px; margin:0 auto 8px; max-width:420px; }
+    .detection-sub { text-align:center; color:#888; font-size:13px; margin-bottom:20px; }
+    .images { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
+    .image-block { flex:1; min-width:280px; max-width:480px; text-align:center; }
+    .image-block h3 { margin-bottom:10px; color:#444; font-size:15px; }
+    .result-img { max-width:100%; border-radius:8px; display:block; margin:0 auto; box-shadow:0 2px 8px rgba(0,0,0,.1); }
+    .error { color:#c0392b; background:#fbe9e7; padding:12px; border-radius:4px; margin:15px 0; display:none; }
+    .loading { text-align:center; padding:20px; color:#666; display:none; }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>Yağlılık.1</h1>
+    <div class="method">Yöntem: HSV specular highlight tespiti — yüzün en parlak VE en az doygun piksellerini (o fotoğrafın kendi dağılımına göre, yüzdelik dilim tabanlı) bulur, gradyan büyüklüğü ile doğrular (keskin kenarlı parlak nesneleri eler, sadece yumuşak/düz "parlama" bölgelerini bırakır). Skor, ayrık leke SAYISI değil, KAPLANAN ALAN YÜZDESİ üzerinden hesaplanır — yağlılık/parlama yaygın bir örtüşme olgusudur</div>
+
+    <div class="upload">
+        <input type="file" id="fileInput" accept="image/*">
+        <br>
+        <button id="scanBtn" disabled>Test Et</button>
+    </div>
+
+    <div id="loading" class="loading">Analiz ediliyor...</div>
+    <div id="error" class="error"></div>
+
+    <div id="result" style="display:none;">
+        <div class="score" id="scoreValue"></div>
+        <div class="score-label">Yağlılık Skoru</div>
+
+        <div class="detection-count" id="detectionCount"></div>
+        <div class="detection-sub" id="detectionSub"></div>
+
+        <div class="images">
+            <div class="image-block">
+                <h3>Isı Haritası</h3>
+                <img id="heatmapImg" class="result-img">
+            </div>
+            <div class="image-block">
+                <h3>Tespit Edilen Yağlı/Parlak Bölgeler</h3>
+                <img id="markedImg" class="result-img">
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const scanBtn = document.getElementById('scanBtn');
+const loading = document.getElementById('loading');
+const error = document.getElementById('error');
+const result = document.getElementById('result');
+const scoreValue = document.getElementById('scoreValue');
+const heatmapImg = document.getElementById('heatmapImg');
+const markedImg = document.getElementById('markedImg');
+
+let selectedFile = null;
+let originalImage = null;
+
+fileInput.addEventListener('change', (e) => {
+    selectedFile = e.target.files[0];
+    scanBtn.disabled = !selectedFile;
+    if (selectedFile) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            originalImage = new Image();
+            originalImage.src = ev.target.result;
+        };
+        reader.readAsDataURL(selectedFile);
+    }
+});
+
+scanBtn.addEventListener('click', async () => {
+    error.style.display = 'none';
+    result.style.display = 'none';
+    loading.style.display = 'block';
+    scanBtn.disabled = true;
+
+    try {
+        const formData = new FormData();
+        formData.append('image', selectedFile);
+        const response = await fetch('/scan', { method: 'POST', body: formData });
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.detail || 'Hata');
+        }
+        const data = await response.json();
+
+        scoreValue.textContent = (data.score * 100).toFixed(0) + '%';
+
+        const count = data.detected_region_count;
+        document.getElementById('detectionCount').textContent =
+            count + ' adet yağlı/parlak bölge tespit edildi';
+        document.getElementById('detectionSub').textContent =
+            'Kaplanan alan: %' + data.coverage_pct.toFixed(2);
+
+        await new Promise((resolve) => {
+            if (originalImage.complete) return resolve();
+            originalImage.onload = resolve;
+        });
+
+        // Isi haritasi: orijinal foto + overlay kompozit
+        const canvas = document.createElement('canvas');
+        canvas.width = originalImage.width;
+        canvas.height = originalImage.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(originalImage, 0, 0);
+
+        const overlay = new Image();
+        overlay.onload = () => {
+            ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height);
+            heatmapImg.src = canvas.toDataURL();
+        };
+        overlay.src = data.overlay;
+
+        // Tespit edilen bolgeler zaten sunucu tarafinda isaretlenmis goruntu
+        markedImg.src = data.marked_image;
+
+        result.style.display = 'block';
+    } catch (err) {
+        error.textContent = 'Hata: ' + err.message;
+        error.style.display = 'block';
+    } finally {
+        loading.style.display = 'none';
+        scanBtn.disabled = false;
+    }
+});
+</script>
+</body>
+</html>
