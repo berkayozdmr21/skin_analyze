@@ -1,6 +1,6 @@
-# skin_analyze — Yüz Cilt Analizi Deneyleri (OpenCV + MediaPipe)
+# skin_analyze — OpenCV ile Yüz Cilt Analizi
 
-Tek bir fotoğraftan **klasik görüntü işleme** (derin öğrenme modeli olmadan) ile yüz cildindeki farklı durumları ölçen, birbirinden bağımsız 6 mini proje ve toplam **27 sürüm**. Her proje kendi klasöründe, numaralı alt klasörlerde (`1`, `2`, `3`, ...) ilerler; her yeni sürüm bir öncekinin **istatistiğini, skor mantığını veya görselleştirmesini bilinçli olarak değiştirir** ve neden değiştirdiğini kendi `README.md` dosyasında ölçümlerle belgeler.
+Tek bir fotoğraftan **OpenCV ile klasik görüntü işleme** (cilt durumunu tahmin eden bir derin öğrenme modeli olmadan) kullanarak yüz cildindeki farklı durumları ölçen, birbirinden bağımsız 6 mini proje ve toplam **27 sürüm**. Her proje kendi klasöründe, numaralı alt klasörlerde (`1`, `2`, `3`, ...) ilerler; her yeni sürüm bir öncekinin **istatistiğini, skor mantığını veya görselleştirmesini bilinçli olarak değiştirir** ve neden değiştirdiğini kendi `README.md` dosyasında ölçümlerle belgeler.
 
 | Proje | Ölçtüğü şey | Sürüm | Port |
 |---|---|---|---|
@@ -17,13 +17,40 @@ Her sürüm klasörü aynı dosya setine sahiptir:
 
 | Dosya | Görev |
 |---|---|
-| `face_mesh.py` | MediaPipe FaceMesh (478 nokta) ile yüz bölgeleri (alın, burun, çene, yanaklar) ve **hariç tutulan** alanlar (göz, kaş, dudak) için maskeler |
+| `face_mesh.py` | MediaPipe FaceMesh (478 nokta) + OpenCV `convexHull` ile yüz bölgeleri (alın, burun, çene, yanaklar) ve **hariç tutulan** alanlar (göz, kaş, dudak) için maskeler |
 | `preprocess.py` | Gri-dünya renk normalizasyonu, CLAHE, gamma, düşük çözünürlüklü fotoğraflar için yükseltme |
 | `<konu>.py` | Projenin çekirdek algoritması (`morluk.py`, `akne.py`, `gozenek.py`, `leke.py`, `yaglilik.py`, `kirisiklik.py`) |
 | `visualize.py` | Isı haritası ve işaretleme çizimleri |
 | `app.py` | FastAPI sunucusu (`/health`, `/scan`) |
 | `client.html` | Fotoğraf yükleyip sonucu gösteren tek sayfalık arayüz |
 | `README.md` | O sürümün yöntemi, gerekçesi ve test sonuçları |
+
+## Kullanılan teknolojiler
+
+**Analizin tamamı OpenCV + NumPy kodudur.** Cilt durumuna (leke, kırışıklık, yağlılık vb.) karar veren hiçbir sinir ağı, eğitilmiş model veya veri kümesi yoktur. Tek öğrenilmiş model, yalnızca yüzün nerede olduğunu bulan MediaPipe FaceMesh'tir.
+
+| Katman | Teknoloji | Ne için kullanıldı |
+|---|---|---|
+| Görüntü işleme | **OpenCV** (`opencv-python-headless`) | Renk dönüşümleri, CLAHE, morfoloji, Gabor/Sobel filtreleri, kontur ve maske işlemleri, çizim |
+| Sayısal hesap | NumPy | Yüzdelik dilim, medyan/MAD, z-skoru, Mahalanobis, maskeli istatistik |
+| Yüz bölgesi | MediaPipe FaceMesh | 478 yüz noktası; alın, yanak, burun, çene maskeleri ve göz/kaş/dudak dışlama maskeleri |
+| Görüntü okuma | Pillow | Yüklenen fotoğrafı okuma |
+| Sunucu | FastAPI + uvicorn | `/scan` ve `/health` uç noktaları |
+| Arayüz | Vanilla JS + HTML | Yükleme, skor ve işaretli görüntü gösterimi |
+
+### OpenCV'nin kullanıldığı teknikler
+
+- **Renk uzayları:** `cvtColor` ile Lab (L* koyuluk, a* kırmızılık, b* sarı-mavi) ve HSV (V parlaklık, S doygunluk).
+- **Ön işleme:** gri-dünya renk normalizasyonu, `createCLAHE` (L* kanalında), gamma düzeltme, düşük çözünürlüklü fotoğraflar için `resize` ile yükseltme.
+- **Morfoloji:** `MORPH_BLACKHAT` (gözenek), `MORPH_TOPHAT`, `MORPH_CLOSE` (yerel arka plan tahmini), `MORPH_OPEN` (gürültü temizliği).
+- **`cv2.inpaint` (Telea):** göz ve dudak gibi dışlanan delikleri kapamadan önce doldurur.
+- **Filtreler:** `getGaborKernel` ile 6 yönlü Gabor bankası (kırışıklık), Sobel gradyanları (yağlılık), Gauss bulanıklaştırma, normalized convolution ile maskeli yerel ortalama.
+- **Şekil analizi:** `findContours`, `contourArea`, `arcLength` (dairesellik = 4π·alan/çevre²), `minAreaRect` (uzama oranı).
+- **Görselleştirme:** `applyColorMap` ile ısı haritası, `circle`/`polylines`/`drawContours` ile işaretleme.
+
+### MediaPipe'ın rolü
+
+Yalnızca `FaceMesh` (`refine_landmarks=True`) ile yüz noktalarını bulur. Bölgelerin maskeleri bu noktalardan `convexHull` ile bizim kodumuzda üretilir; cildin durumuna bu model karar vermez.
 
 ## Kurulum ve çalıştırma
 
